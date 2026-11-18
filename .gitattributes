@@ -1,0 +1,5 @@
+* text=auto
+*.vi binary
+*.llb binary
+*.blend binary
+*.png binary
