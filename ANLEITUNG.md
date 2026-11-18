@@ -1,4 +1,4 @@
-# PuT-3 Anleitung
+# PuT-Simulationen Anleitung
 
 <div align="center">
 
@@ -20,14 +20,16 @@
 
 </div>
 
-### Start
+### PuT-3
 
-1. `Start\PuT3.exe` öffnen. Wenn die Datei fehlt, den [Build-Befehl](README.md#start) ausführen.
-2. In LabVIEW 2026 [PuT3 Messassistent.vi](LabVIEW/PuT3%20Messassistent.vi) öffnen. Messart und physikalischen Kanal wählen und das VI starten. Die Werkbank zeigt den letzten Auftrag an. Für eine gültige Messung den passenden Messkreis stecken.
+#### Start
+
+1. `PuT-3\Start\PuT3.exe` öffnen. Wenn die Datei fehlt, den [Build-Befehl](README.md#start) ausführen.
+2. In LabVIEW 2026 [PuT3 Messassistent.vi](PuT-3/LabVIEW/PuT3%20Messassistent.vi) öffnen. Messart und physikalischen Kanal wählen und das VI starten. Die Werkbank zeigt den letzten Auftrag an. Für eine gültige Messung den passenden Messkreis stecken.
 3. In **Erkunden** einen Anschluss anklicken, um seine Funktion zu sehen. In **Verdrahten** zwei Anschlüsse anklicken, um eine Leitung zu stecken. Über die Leitungsliste lassen sich Verbindungen entfernen und Kabeldefekte einstellen. Die Jumperstellung änderst du direkt am Jumper.
 4. In LabVIEW mit dem Express-Knoten oder mit **PuT3 Auftrag.vi** und **PuT3 DAQ.vi** dein eigenes Blockdiagramm aufbauen.
 
-### LabVIEW
+#### LabVIEW
 
 | Baustein | Verwendung |
 | --- | --- |
@@ -39,7 +41,7 @@
 
 Für die Funktionspalette den gesamten Ordner **LabVIEW** als **PuT3** unter `user.lib\_express` der LabVIEW-Installation ablegen. Danach LabVIEW neu starten und im Blockdiagramm **Express → Benutzerbibliotheken → PuT3 Virtuelle DAQ** wählen. **PuT3 Virtuelle DAQSource.llb**, **_PuT3 Virtuelle DAQConfig.llb** und die VIs müssen zusammenbleiben. [NI-Anleitung für Express-VIs](https://www.ni.com/docs/en-US/bundle/labview/page/creating-express-vis.html)
 
-### Adressen
+#### Adressen
 
 | Messart | Kanal | Daten |
 | --- | --- | --- |
@@ -64,7 +66,7 @@ Der Analogblock umfasst bis zu 16.384 Werte und bei der Erfassung höchstens 1,5
 | `-8` | Fremdspannung an den DMM-Buchsen bei Widerstandsmessung |
 | `-9` | LabVIEW-Verbindungsfehler. Details in **error out**. |
 
-### Versuch
+#### Versuch
 
 | Teil | An der Werkbank üben |
 | --- | --- |
@@ -78,11 +80,12 @@ Die Werkbank startet ohne gesteckte Leitungen. Das Modell nähert etwa Massekopp
 
 Der originale NI-DAQ-Assistent kann mit einem in NI MAX simulierten Gerät für Kanalwahl und Aufgabenerstellung verwendet werden. NI-DAQmx erzeugt dabei eigene Signale. Für die Verdrahtungssimulation verwendest du die mitgelieferten PuT-3-VIs. [NI zu simulierten DAQmx-Geräten](https://knowledge.ni.com/KnowledgeArticleDetails?id=kA00Z0000019Nw0SAE&l=en-US)
 
-### Tests
+#### Tests
 
-Mit dem gebauten Programm aus dem Repository-Ordner starten.
+Im Repository-Ordner beginnen und für die Prüfungen in den Ordner `PuT-3` wechseln.
 
 ~~~powershell
+Set-Location .\PuT-3
 $test = Start-Process -FilePath .\Start\PuT3.exe -ArgumentList '--self-test', 'selbsttest.txt' -Wait -PassThru
 Get-Content .\selbsttest.txt
 $test.ExitCode
@@ -100,18 +103,20 @@ Die C#-Prüfungen umfassen unter anderem Steckverbindungen, Kontaktflächen, Kab
 [![Exercise](https://img.shields.io/badge/Exercise-24292f?style=for-the-badge)](#exercise)
 [![Tests](https://img.shields.io/badge/Tests-24292f?style=for-the-badge)](#verification)
 [![README](https://img.shields.io/badge/README-24292f?style=for-the-badge)](README.md#english)
-[![Top](https://img.shields.io/badge/Top-24292f?style=for-the-badge)](#put-3-anleitung)
+[![Top](https://img.shields.io/badge/Top-24292f?style=for-the-badge)](#put-simulationen-anleitung)
 
 </div>
 
-### Setup
+### PuT-3 lab bench
 
-1. Launch `Start\PuT3.exe`. If you are starting from a checkout, [build the app first](README.md#start).
-2. Open [PuT3 Messassistent.vi](LabVIEW/PuT3%20Messassistent.vi) in LabVIEW 2026. Pick a measurement type and physical channel and run the VI. The bench shows the latest request. Wire the relevant circuit to obtain a reading.
+#### Setup
+
+1. Launch `PuT-3\Start\PuT3.exe`. If you are starting from a checkout, [build the app first](README.md#start).
+2. Open [PuT3 Messassistent.vi](PuT-3/LabVIEW/PuT3%20Messassistent.vi) in LabVIEW 2026. Pick a measurement type and physical channel and run the VI. The bench shows the latest request. Wire the relevant circuit to obtain a reading.
 3. Select **Erkunden** (Explore) and click a connector to inspect it. Under **Verdrahten** (Wire), click two connectors to add a lead. Use the lead list to remove a connection or set a cable fault. Click a jumper to change its position.
 4. Use **PuT3 Virtuelle DAQ** or the **PuT3 Auftrag.vi** and **PuT3 DAQ.vi** subVIs in your own block diagram.
 
-### LabVIEW tools
+#### LabVIEW tools
 
 | File | Use |
 | --- | --- |
@@ -123,7 +128,7 @@ Die C#-Prüfungen umfassen unter anderem Steckverbindungen, Kontaktflächen, Kab
 
 To add the Express VI to the Functions palette, copy the entire **LabVIEW** directory as **PuT3** under `user.lib\_express` in your LabVIEW installation. Restart LabVIEW and choose **Express → User Libraries → PuT3 Virtuelle DAQ**. Keep the source and configuration libraries together with the VIs. [NI guide to creating Express VIs](https://www.ni.com/docs/en-US/bundle/labview/page/creating-express-vis.html)
 
-### Channels
+#### Channels
 
 | Measurement | Channel | Data |
 | --- | --- | --- |
@@ -148,7 +153,7 @@ Analog blocks contain up to 16,384 values and up to 1.5 s of acquired data at a 
 | `-8` | External voltage at the DMM terminals during resistance measurement |
 | `-9` | LabVIEW connection error. See **error out**. |
 
-### Exercise
+#### Exercise
 
 | Part | Practice on the bench |
 | --- | --- |
@@ -162,6 +167,6 @@ The bench starts with the leads disconnected. The circuit model approximates gro
 
 The original NI DAQ Assistant supports channel selection and task setup with an NI MAX simulated device. NI-DAQmx generates its own readings in that mode. Use the included PuT-3 VIs to get readings from the wiring bench. [NI on simulated DAQmx devices](https://knowledge.ni.com/KnowledgeArticleDetails?id=kA00Z0000019Nw0SAE&l=en-US)
 
-### Verification
+#### Verification
 
-Run the [PowerShell self-test command](#tests) in a built checkout. The C# tests cover wiring, connector hit areas, cable faults, resistance, overload and window layout. The native LabVIEW tests exercise requests and data exchange against the running bench. With LabVIEW 2026 and its local VI server on port `48372`, run `python tools/build_vis.py --cli` and `python tools/build_vis.py --express-run` to generate the test VIs through LabVIEW MCP, then run `python tools/test_labview.py`. Palette insertion and manual interaction with the Express configuration dialog remain outside the automated tests.
+Run the [PowerShell self-test command](#tests) from the repository root. It switches to the `PuT-3` directory for the C# and LabVIEW checks. The C# tests cover wiring, connector hit areas, cable faults, resistance, overload and window layout. The native LabVIEW tests exercise requests and data exchange against the running bench. With LabVIEW 2026 and its local VI server on port `48372`, run `python tools/build_vis.py --cli` and `python tools/build_vis.py --express-run` to generate the test VIs through LabVIEW MCP, then run `python tools/test_labview.py`. Palette insertion and manual interaction with the Express configuration dialog remain outside the automated tests.

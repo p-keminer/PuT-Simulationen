@@ -1,4 +1,4 @@
-# PuT-3 Virtuelle Steckwerkbank
+# PuT-Simulationen
 
 <div align="center">
 
@@ -9,7 +9,7 @@
 
 ## Deutsch
 
-Virtuelle Steckwerkbank für die fünf Teile der PuT-3-Hochschulübung mit NI myDAQ und miniAdap-1. Du steckst Leitungen und setzt Jumper auf dem Gerätebild. Messart, Kanal, Abtastrate und Ausgabe stellst du in LabVIEW ein.
+Simulationen für die PuT-Praktikumsversuche. Für PuT-3 steht eine virtuelle Steckwerkbank mit NI myDAQ und miniAdap-1 bereit. Du steckst Leitungen und setzt Jumper am Gerätebild. Messart, Kanal, Abtastrate und Ausgabe stellst du in LabVIEW ein.
 
 <div align="center">
 
@@ -20,31 +20,33 @@ Virtuelle Steckwerkbank für die fünf Teile der PuT-3-Hochschulübung mit NI my
 
 </div>
 
-![Virtuelle Steckwerkbank mit myDAQ, Adapterplatine und Verdrahtungsansicht](Workbench/Assets/vorschau.png)
+![Virtuelle Steckwerkbank mit myDAQ, Adapterplatine und Verdrahtungsansicht](PuT-3/Workbench/Assets/vorschau.png)
 
 ### Start
 
-Unter Windows x64 mit dem .NET 10 SDK aus dem Repository-Ordner bauen.
+PuT-3 unter Windows x64 mit dem .NET 10 SDK aus dem Repository-Ordner bauen.
 
 ~~~powershell
-dotnet publish .\Workbench\Workbench.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o .\Start
-.\Start\PuT3.exe
+dotnet publish .\PuT-3\Workbench\Workbench.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o .\PuT-3\Start
+.\PuT-3\Start\PuT3.exe
 ~~~
 
 In LabVIEW 2026 öffnest du danach **PuT3 Messassistent.vi**. Für eigene Blockdiagramme liegen der Express-Knoten und alle SubVIs im selben Ordner.
 
 ### Struktur
 
+Jeder Versuch erhält einen eigenen Ordner. [PuT-3](PuT-3/) enthält die Steckwerkbank. PuT-4 und PuT-5 können später als Ordner auf derselben Ebene hinzukommen.
+
 | Ordner | Inhalt |
 | --- | --- |
-| [LabVIEW](LabVIEW/) | Messassistent, Funktionsgenerator, SubVIs und beide Bibliotheken des Express-Knotens |
-| [Workbench](Workbench/) | C#-/WPF-Anwendung und Schaltungsmodell |
-| [Modelle](Modelle/) | Frei drehbares Blender-Modell der Geräte |
-| [tools](tools/) | Werkzeuge für VI-Erstellung, LabVIEW-Tests und Gerätegrafik |
+| [LabVIEW](PuT-3/LabVIEW/) | Messassistent, Funktionsgenerator, SubVIs und beide Bibliotheken des Express-Knotens |
+| [Workbench](PuT-3/Workbench/) | C#-/WPF-Anwendung und Schaltungsmodell |
+| [Modelle](PuT-3/Modelle/) | Frei drehbares Blender-Modell der Geräte |
+| [tools](PuT-3/tools/) | Werkzeuge für VI-Erstellung, LabVIEW-Tests und Gerätegrafik |
 
 ## English
 
-A virtual wiring bench for all five parts of the PuT-3 lab exercise with the NI myDAQ and miniAdap-1. Wire the connectors and set the jumpers on the bench. Configure measurement type, channel, sample rate and output in LabVIEW.
+Simulations for the PuT lab exercises. PuT-3 provides a virtual wiring bench with the NI myDAQ and miniAdap-1. Wire the connectors and set the jumpers on the bench. Configure measurement type, channel, sample rate and output in LabVIEW.
 
 <div align="center">
 
@@ -52,19 +54,21 @@ A virtual wiring bench for all five parts of the PuT-3 lab exercise with the NI 
 [![Layout](https://img.shields.io/badge/Layout-24292f?style=for-the-badge)](#layout)
 [![Guide](https://img.shields.io/badge/Guide-24292f?style=for-the-badge)](ANLEITUNG.md#english)
 [![Tests](https://img.shields.io/badge/Tests-24292f?style=for-the-badge)](ANLEITUNG.md#verification)
-[![Top](https://img.shields.io/badge/Top-24292f?style=for-the-badge)](#put-3-virtuelle-steckwerkbank)
+[![Top](https://img.shields.io/badge/Top-24292f?style=for-the-badge)](#put-simulationen)
 
 </div>
 
 ### Quick start
 
-Follow the [build command](#start) from the checkout root on Windows x64 with the .NET 10 SDK. Start `Start\PuT3.exe`, then open **PuT3 Messassistent.vi** in LabVIEW 2026. The same folder contains the Express VI and all the subVIs for your own diagrams.
+Follow the [build command](#start) from the checkout root on Windows x64 with the .NET 10 SDK. Start `PuT-3\Start\PuT3.exe`, then open **PuT3 Messassistent.vi** in LabVIEW 2026. The same folder contains the Express VI and all the subVIs for your own diagrams.
 
 ### Layout
 
+Each exercise has its own directory. [PuT-3](PuT-3/) contains the wiring bench. PuT-4 and PuT-5 can be added alongside it.
+
 | Folder | Contents |
 | --- | --- |
-| [LabVIEW](LabVIEW/) | Measurement assistant, function generator, subVIs and both Express VI libraries |
-| [Workbench](Workbench/) | C#/WPF application and circuit model |
-| [Modelle](Modelle/) | Rotatable Blender model of the equipment |
-| [tools](tools/) | VI generation, LabVIEW testing and equipment rendering tools |
+| [LabVIEW](PuT-3/LabVIEW/) | Measurement assistant, function generator, subVIs and both Express VI libraries |
+| [Workbench](PuT-3/Workbench/) | C#/WPF application and circuit model |
+| [Modelle](PuT-3/Modelle/) | Rotatable Blender model of the equipment |
+| [tools](PuT-3/tools/) | VI generation, LabVIEW testing and equipment rendering tools |
