@@ -14,6 +14,7 @@ Simulationen für die PuT-Praktikumsversuche. Für PuT-3 steht eine virtuelle St
 <div align="center">
 
 [![Start](https://img.shields.io/badge/Start-24292f?style=for-the-badge)](#start)
+[![Voraussetzungen](https://img.shields.io/badge/Voraussetzungen-24292f?style=for-the-badge)](#voraussetzungen)
 [![Struktur](https://img.shields.io/badge/Struktur-24292f?style=for-the-badge)](#struktur)
 [![Anleitung](https://img.shields.io/badge/Anleitung-24292f?style=for-the-badge)](ANLEITUNG.md#deutsch)
 [![Tests](https://img.shields.io/badge/Tests-24292f?style=for-the-badge)](ANLEITUNG.md#tests)
@@ -21,6 +22,18 @@ Simulationen für die PuT-Praktikumsversuche. Für PuT-3 steht eine virtuelle St
 </div>
 
 ![Virtuelle Steckwerkbank mit myDAQ, Adapterplatine und Verdrahtungsansicht](PuT-3/Workbench/Assets/vorschau.png)
+
+### Voraussetzungen
+
+| Zweck | Benötigt |
+| --- | --- |
+| Steckwerkbank aus dem Klon bauen und testen | Windows x64, PowerShell und [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0). Die veröffentlichte EXE enthält die .NET-Laufzeit. |
+| Versuch in LabVIEW durchführen | LabVIEW 2026 mit aktiver Lizenz und die mitgelieferten VIs. Steckwerkbank und LabVIEW laufen auf demselben Rechner. Für die Simulation brauchst du weder ein physisches myDAQ noch NI-DAQmx, ELVISmx oder LabVIEW MCP. |
+| Native LabVIEW-Tests | Zusätzlich Python 3 (getestet mit 3.12), die [NI LabVIEW Command Line Interface](https://www.ni.com/en/support/downloads/software-products/download.ni-labview-command-line-interface.html) als `LabVIEWCLI` im `PATH` und einen lokalen LabVIEW-VI-Server auf TCP-Port `48372`. Der Test startet die gebaute `PuT-3\Start\PuT3.exe` am freien Port `48371`. |
+| Prüf-VIs erzeugen oder VIs weiterentwickeln | [LabVIEW MCP v2.3.2](https://github.com/Zuehlke/labview-mcp/releases/tag/v2.3.2) mit dem mitgelieferten `pylabview`-Backend. Setze `LABVIEW_MCP_EXE` auf deine lokale `LabVIEWMCP.exe`. Das Python-Skript startet den Server selbst. |
+| 3D-Modell öffnen oder Gerätegrafik rendern | Optional Blender 5.2. |
+
+Die Befehle für die Steckwerkbank-Tests, die Erzeugung der Prüf-VIs und den LabVIEW-Testlauf stehen unter [Tests in der Anleitung](ANLEITUNG.md#tests).
 
 ### Start
 
@@ -57,12 +70,25 @@ Simulations for the PuT lab exercises. PuT-3 provides a virtual wiring bench wit
 <div align="center">
 
 [![Quick start](https://img.shields.io/badge/Quick_start-24292f?style=for-the-badge)](#quick-start)
+[![Requirements](https://img.shields.io/badge/Requirements-24292f?style=for-the-badge)](#requirements)
 [![Layout](https://img.shields.io/badge/Layout-24292f?style=for-the-badge)](#layout)
 [![Guide](https://img.shields.io/badge/Guide-24292f?style=for-the-badge)](ANLEITUNG.md#english)
 [![Tests](https://img.shields.io/badge/Tests-24292f?style=for-the-badge)](ANLEITUNG.md#verification)
 [![Top](https://img.shields.io/badge/Top-24292f?style=for-the-badge)](#put-simulationen)
 
 </div>
+
+### Requirements
+
+| Purpose | Requirements |
+| --- | --- |
+| Build the wiring bench from a clone and run its self-tests | Windows x64, PowerShell, and the [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0). The published EXE bundles the .NET runtime. |
+| Work through the exercise in LabVIEW | Licensed LabVIEW 2026 and the included VIs. Run LabVIEW and the wiring bench on the same machine. The simulation needs no physical myDAQ, NI-DAQmx, ELVISmx, or LabVIEW MCP. |
+| Run native LabVIEW tests | Also install Python 3 (tested with 3.12) and the [NI LabVIEW Command Line Interface](https://www.ni.com/en/support/downloads/software-products/download.ni-labview-command-line-interface.html), with `LabVIEWCLI` on your `PATH`. Enable the local LabVIEW VI Server on TCP port `48372`. The test starts the built `PuT-3\Start\PuT3.exe` and uses port `48371`, which must be free. |
+| Generate test VIs or develop VIs | [LabVIEW MCP v2.3.2](https://github.com/Zuehlke/labview-mcp/releases/tag/v2.3.2) with the bundled `pylabview` backend. Set `LABVIEW_MCP_EXE` to your local `LabVIEWMCP.exe`. The Python script starts the server. |
+| Open the 3D model or render the equipment artwork | Optional Blender 5.2. |
+
+See [Verification in the guide](ANLEITUNG.md#verification) for the bench self-test, test VI generation and LabVIEW test commands.
 
 ### Quick start
 
