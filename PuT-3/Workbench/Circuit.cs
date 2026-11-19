@@ -74,7 +74,7 @@ internal sealed class Bench
     public readonly object Gate = new();
     public readonly List<Cable> Cables = [];
     // J4/J5: 0 offen, 1 externe Buchse, 2 Potentiometer.
-    public int[] Jumpers { get; } = [0, 1, 1, 1, 1, 0, 0];
+    public int[] Jumpers { get; } = [1, 1, 1, 1, 1, 0, 0];
     public double[] Pots { get; } = [0.5, 0.5];
     public bool[] Buttons { get; } = new bool[4];
     public bool Usb { get; set; } = true;
@@ -126,7 +126,6 @@ internal sealed class Bench
         Jumpers[4] = 2;
         Pots[1] = 0.75;
         Resistance = 3000;
-        Jumpers[0] = 1; // Provide a common return path for AO to PFI.
         Jumpers[6] = 0; // Disconnect the LED load from the analog source.
     }
 

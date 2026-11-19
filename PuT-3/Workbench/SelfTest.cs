@@ -26,6 +26,7 @@ internal static class SelfTest
         }
         static bool Near(double value, double target, double tolerance = 0.003) => Math.Abs(value - target) <= tolerance;
 
+        Check("J1 verbindet AGND und DGND beim Start", bench.Observe(0).SharesNode("AGND", "DGND"));
         Check("DMM leer", Request("OHM", "dmm")[0] == -3);
         bench.Fixture();
         Check("5.2 Widerstand über DMM-Buchsen", Near(Request("OHM", "dmm")[1], 3000));
@@ -78,6 +79,7 @@ internal static class SelfTest
         Check("5.4 kontinuierlicher Messblock", block.Length == 513 && block.Skip(1).All(v => Near(v, 3.25)));
         Check("5.4 zweiter Block läuft weiter", Request("AI", "ai0", count: 512, repeat: true).Length == 513);
         Check("5.5 Poti über AI1", Near(Request("AI", "ai1")[1], 5.0067, .01));
+        bench.Jumpers[6] = 1;
         Check("5.5 Portmuster D0/D1/D7", Request("DO", "port0", "131")[0] == 0 && Request("DI", "port0")[1] == 131);
         Check("5.5 falsche Portausgabe abgelehnt", Request("DO", "port0", "256")[0] == -2);
         Check("5.5 Eine Einzelausgabe ändert nur das ausgewählte Bit",
@@ -90,6 +92,7 @@ internal static class SelfTest
             Request("RESET", "port0")[0] == 0 && bench.Analog.All(output => output is null) &&
             bench.Digital.All(output => output is null) && bench.Captures.All(capture => capture is null) &&
             Request("AI", "ai0")[0] == -3);
+        bench.Jumpers[6] = 0;
         bench.Buttons[2] = true;
         Check("DIO einzelne Eingangsleitung", Request("DI", "port0/line2")[1] == 1);
         bench.Usb = false;
@@ -209,7 +212,7 @@ internal static class SelfTest
 
         bench.Cables.Clear();
         bench.Connect("X6.1 AO1", "X7.2 DIO1");
-        bench.Jumpers[6] = 0;
+        bench.Jumpers[0] = 0;
         check("Offener J1 trennt AGND und DGND",
             !bench.Observe(0).SharesNode("AGND", "DGND"));
         check("Ohne Massebezug meldet der Digitaleingang einen Fehler",
