@@ -18,6 +18,7 @@ Simulationen für die PuT-Praktikumsversuche. Für PuT-3 steht eine virtuelle St
 [![Struktur](https://img.shields.io/badge/Struktur-24292f?style=for-the-badge)](#struktur)
 [![Anleitung](https://img.shields.io/badge/Anleitung-24292f?style=for-the-badge)](ANLEITUNG.md#deutsch)
 [![Tests](https://img.shields.io/badge/Tests-24292f?style=for-the-badge)](ANLEITUNG.md#tests)
+[![Lizenz](https://img.shields.io/badge/Lizenz-MIT-24292f?style=for-the-badge)](#lizenz)
 
 </div>
 
@@ -63,6 +64,10 @@ Jeder Versuch erhält einen eigenen Ordner. [PuT-3](PuT-3/) enthält die Steckwe
 | [Modelle](PuT-3/Modelle/) | Frei drehbares Blender-Modell der Geräte |
 | [tools](PuT-3/tools/) | Werkzeuge für VI-Erstellung, LabVIEW-Tests und Gerätegrafik |
 
+### Lizenz
+
+Die projekteeigenen Inhalte stehen unter der [MIT-Lizenz](LICENSE). Für NI LabVIEW und die externen Werkzeuge gelten deren jeweilige Lizenzbedingungen.
+
 ## English
 
 Simulations for the PuT lab exercises. PuT-3 provides a virtual wiring bench with the NI myDAQ and miniAdap-1. Wire the connectors and set the jumpers on the bench. Configure measurement type, channel, sample rate and output in LabVIEW.
@@ -74,6 +79,7 @@ Simulations for the PuT lab exercises. PuT-3 provides a virtual wiring bench wit
 [![Layout](https://img.shields.io/badge/Layout-24292f?style=for-the-badge)](#layout)
 [![Guide](https://img.shields.io/badge/Guide-24292f?style=for-the-badge)](ANLEITUNG.md#english)
 [![Tests](https://img.shields.io/badge/Tests-24292f?style=for-the-badge)](ANLEITUNG.md#verification)
+[![License](https://img.shields.io/badge/License-MIT-24292f?style=for-the-badge)](#license)
 [![Top](https://img.shields.io/badge/Top-24292f?style=for-the-badge)](#put-simulationen)
 
 </div>
@@ -106,3 +112,7 @@ Each exercise has its own directory. [PuT-3](PuT-3/) contains the wiring bench. 
 | [Workbench](PuT-3/Workbench/) | C#/WPF application and circuit model |
 | [Modelle](PuT-3/Modelle/) | Rotatable Blender model of the equipment |
 | [tools](PuT-3/tools/) | VI generation, LabVIEW testing and equipment rendering tools |
+
+### License
+
+The project's own content is available under the [MIT License](LICENSE). NI LabVIEW and third-party tools are subject to their respective licenses.
