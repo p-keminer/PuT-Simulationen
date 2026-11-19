@@ -45,7 +45,7 @@ Für Versuchsteil 2 **Virtual DAQ** in dein eigenes Blockdiagramm setzen. Im Dia
 
 Zum Prüfen einer digitalen Ausgabe **Virtual DAQ Signal erfassen.vi** öffnen und **DO Schreiben**, `myDAQ1/port0` und **Ausgabewerte[0]** = `5` einstellen. Das VI einmal ausführen. Bei geschlossenem J7 und freien DIO-Anschlüssen leuchten D0 und D2. Die kleine Zahl links am Array ist sein Index.
 
-Für die Express-Palette den Ordner **Intern** als **PuT3** unter `user.lib\_express` der LabVIEW-Installation kopieren. Nach dem Neustart im Blockdiagramm rechtsklicken und gegebenenfalls unten den Doppelpfeil anklicken. Unter **Eigene Bibliotheken → Eigene Bibliotheken (Express) → PuT3 → paletteMenu** das blaue **Virtual DAQ** auswählen. Die Dateien aus **Intern** müssen zusammenbleiben. [NI-Anleitung für Express-VIs](https://www.ni.com/docs/en-US/bundle/labview/page/creating-express-vis.html)
+Für die Express-Palette den [Installationsbefehl aus der README](README.md#start) ausführen. Das Skript erkennt eine Standardinstallation von LabVIEW 2026 und kann mit `-LabVIEWRoot` auf einen anderen Installationsordner gesetzt werden. Es sichert ersetzte Dateien unter `%LOCALAPPDATA%\PuT-Simulationen\LabVIEW-Sicherungen`. Falls Windows den Schreibzugriff verweigert, den Befehl in einer als Administrator gestarteten PowerShell wiederholen. Nach dem Neustart im Blockdiagramm rechtsklicken und gegebenenfalls unten den Doppelpfeil anklicken. Unter **Eigene Bibliotheken → Eigene Bibliotheken (Express) → PuT3 → paletteMenu** das blaue **Virtual DAQ** auswählen. [NI-Anleitung für Express-VIs](https://www.ni.com/docs/en-US/bundle/labview/page/creating-express-vis.html)
 
 #### Adressen
 
@@ -156,7 +156,7 @@ For Part 2, place **Virtual DAQ** in your own block diagram. Select **DMM Widers
 
 To try a digital output, open **Virtual DAQ Signal erfassen.vi** and set **DO Schreiben**, `myDAQ1/port0` and **Ausgabewerte[0]** = `5`, then run it once. With J7 installed and the DIO terminals free, D0 and D2 light up. The small number on the left is the array index.
 
-To add the Express VI to the Functions palette, copy **Intern** as **PuT3** under `user.lib\_express` in your LabVIEW installation. After restarting, right-click the block diagram and expand the palette with the double arrow if needed. Choose the blue **Virtual DAQ** icon under **User Libraries → Express User Libraries → PuT3 → paletteMenu**. Keep the files from **Intern** together. [NI guide to creating Express VIs](https://www.ni.com/docs/en-US/bundle/labview/page/creating-express-vis.html)
+Run the [palette installer from the README](README.md#start). It finds the standard LabVIEW 2026 installation. Use `-LabVIEWRoot` for a custom installation directory. It backs up replaced files under `%LOCALAPPDATA%\PuT-Simulationen\LabVIEW-Sicherungen`. If Windows denies write access, run the command from an elevated PowerShell. After restarting, right-click the block diagram and expand the palette with the double arrow if needed. Choose the blue **Virtual DAQ** icon under **User Libraries → Express User Libraries → PuT3 → paletteMenu**. [NI guide to creating Express VIs](https://www.ni.com/docs/en-US/bundle/labview/page/creating-express-vis.html)
 
 #### Channels
 

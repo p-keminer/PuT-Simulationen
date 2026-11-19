@@ -33,6 +33,12 @@ dotnet publish .\PuT-3\Workbench\Workbench.csproj -c Release -r win-x64 --self-c
 
 In `PuT-3\LabVIEW` liegen **Virtual DAQ Signal erzeugen.vi** und **Virtual DAQ Signal erfassen.vi**. Für dein eigenes Blockdiagramm findest du im Unterordner **Bausteine** die SubVIs zum Einstellen und Ausführen eines Messauftrags.
 
+Nach dem Klonen oder Aktualisieren bindest du **Virtual DAQ** mit dem [Installationsskript](PuT-3/Install-LabVIEW.ps1) in LabVIEW ein. Führe im Repository-Ordner aus und öffne anschließend LabVIEW.
+
+~~~powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\PuT-3\Install-LabVIEW.ps1
+~~~
+
 ### Struktur
 
 Jeder Versuch erhält einen eigenen Ordner. [PuT-3](PuT-3/) enthält die Steckwerkbank. PuT-4 und PuT-5 können später als Ordner auf derselben Ebene hinzukommen.
@@ -61,6 +67,8 @@ Simulations for the PuT lab exercises. PuT-3 provides a virtual wiring bench wit
 ### Quick start
 
 Follow the [build command](#start) from the checkout root on Windows x64 with the .NET 10 SDK. Start `PuT-3\Start\PuT3.exe`. The `PuT-3\LabVIEW` directory contains **Virtual DAQ Signal erzeugen.vi** and **Virtual DAQ Signal erfassen.vi**. The **Bausteine** subfolder contains the subVIs for configuring and executing requests from your own block diagram.
+
+After cloning or updating, run the [LabVIEW palette installer](#start) from the checkout root and open LabVIEW.
 
 ### Layout
 
