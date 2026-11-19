@@ -18,7 +18,7 @@ Simulationen für die PuT-Praktikumsversuche. Für PuT-3 steht eine virtuelle St
 [![Struktur](https://img.shields.io/badge/Struktur-24292f?style=for-the-badge)](#struktur)
 [![Anleitung](https://img.shields.io/badge/Anleitung-24292f?style=for-the-badge)](ANLEITUNG.md#deutsch)
 [![Tests](https://img.shields.io/badge/Tests-24292f?style=for-the-badge)](ANLEITUNG.md#tests)
-[![Lizenz](https://img.shields.io/badge/Lizenz-MIT-24292f?style=for-the-badge)](#lizenz)
+[![Lizenz MIT](https://img.shields.io/badge/Lizenz%20MIT-24292f?style=for-the-badge)](#lizenz)
 
 </div>
 
@@ -79,7 +79,7 @@ Simulations for the PuT lab exercises. PuT-3 provides a virtual wiring bench wit
 [![Layout](https://img.shields.io/badge/Layout-24292f?style=for-the-badge)](#layout)
 [![Guide](https://img.shields.io/badge/Guide-24292f?style=for-the-badge)](ANLEITUNG.md#english)
 [![Tests](https://img.shields.io/badge/Tests-24292f?style=for-the-badge)](ANLEITUNG.md#verification)
-[![License](https://img.shields.io/badge/License-MIT-24292f?style=for-the-badge)](#license)
+[![MIT License](https://img.shields.io/badge/MIT%20License-24292f?style=for-the-badge)](#license)
 [![Top](https://img.shields.io/badge/Top-24292f?style=for-the-badge)](#put-simulationen)
 
 </div>
