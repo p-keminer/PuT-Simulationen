@@ -151,6 +151,11 @@
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Hit" Property="Background" Value="#65FFCF83"/>
                         </Trigger>
+                        <Trigger Property="Tag" Value="electrical">
+                            <Setter TargetName="Hit" Property="BorderBrush" Value="{StaticResource Warning}"/>
+                            <Setter TargetName="Hit" Property="BorderThickness" Value="2"/>
+                            <Setter TargetName="Hit" Property="Background" Value="#4DFF927C"/>
+                        </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="Hit" Property="BorderBrush" Value="{StaticResource StageFocus}"/>
                             <Setter TargetName="Hit" Property="BorderThickness" Value="2"/>

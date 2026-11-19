@@ -31,7 +31,7 @@ dotnet publish .\PuT-3\Workbench\Workbench.csproj -c Release -r win-x64 --self-c
 .\PuT-3\Start\PuT3.exe
 ~~~
 
-In LabVIEW 2026 öffnest du danach **PuT3 Messassistent.vi**. Für eigene Blockdiagramme liegen der Express-Knoten und alle SubVIs im selben Ordner.
+In `PuT-3\LabVIEW` liegen **Virtual DAQ Signal erzeugen.vi** und **Virtual DAQ Signal erfassen.vi**. Für dein eigenes Blockdiagramm findest du im Unterordner **Bausteine** die SubVIs zum Einstellen und Ausführen eines Messauftrags.
 
 ### Struktur
 
@@ -60,7 +60,7 @@ Simulations for the PuT lab exercises. PuT-3 provides a virtual wiring bench wit
 
 ### Quick start
 
-Follow the [build command](#start) from the checkout root on Windows x64 with the .NET 10 SDK. Start `PuT-3\Start\PuT3.exe`, then open **PuT3 Messassistent.vi** in LabVIEW 2026. The same folder contains the Express VI and all the subVIs for your own diagrams.
+Follow the [build command](#start) from the checkout root on Windows x64 with the .NET 10 SDK. Start `PuT-3\Start\PuT3.exe`. The `PuT-3\LabVIEW` directory contains **Virtual DAQ Signal erzeugen.vi** and **Virtual DAQ Signal erfassen.vi**. The **Bausteine** subfolder contains the subVIs for configuring and executing requests from your own block diagram.
 
 ### Layout
 

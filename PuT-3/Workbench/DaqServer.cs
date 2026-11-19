@@ -6,6 +6,9 @@ using System.Text;
 
 namespace PuT3;
 
+internal sealed record DaqActivity(string Operation, string Channel, int Status,
+    int SampleCount = 0, double Minimum = 0, double Maximum = 0, double? ResistanceOhms = null);
+
 internal sealed class DaqServer : IDisposable
 {
     public const int Port = 48371;
@@ -15,7 +18,11 @@ internal sealed class DaqServer : IDisposable
     private readonly CancellationTokenSource stop = new();
     private readonly Bench bench;
     private readonly SemaphoreSlim connections = new(8);
-    public string? LastRequest { get; private set; }
+    public DaqActivity? LastActivity { get; private set; }
+    public DaqActivity? LastAnalogReading { get; private set; }
+    public ElectricalIssue? LastElectricalIssue { get; private set; }
+
+    public void ClearElectricalIssue() => LastElectricalIssue = null;
 
     public int BoundPort => ((IPEndPoint)listener.LocalEndpoint).Port;
 
@@ -64,13 +71,11 @@ internal sealed class DaqServer : IDisposable
                 if (lf >= 0) break;
             }
             string command = Encoding.ASCII.GetString(request.ToArray());
-            double started = bench.Clock.Elapsed.TotalSeconds;
-            double[] answer = request.Length <= 420_000 ? Execute(command) : [-2];
-            if (answer[0] >= 0 && command.StartsWith("AI|", StringComparison.OrdinalIgnoreCase))
+            double? captureUntil = null;
+            double[] answer = request.Length <= 420_000 ? Execute(command, out captureUntil) : [-2];
+            if (captureUntil is { } deadline)
             {
-                string[] fields = command.Split('|');
-                double duration = (answer.Length - 1) / double.Parse(fields[3], Invariant);
-                double remaining = duration - (bench.Clock.Elapsed.TotalSeconds - started);
+                double remaining = deadline - bench.Clock.Elapsed.TotalSeconds;
                 if (remaining > 0) await Task.Delay(TimeSpan.FromSeconds(remaining), timeout.Token);
             }
             byte[] body = Encoding.ASCII.GetBytes(string.Join('\t', answer.Select(x => x.ToString("G17", Invariant))));
@@ -88,80 +93,135 @@ internal sealed class DaqServer : IDisposable
     }
 
     // Wire format: operation|physical channel|terminal|rate|samples|range|repeat|TAB-separated output samples
-    public double[] Execute(string request)
+    public double[] Execute(string request) => Execute(request, out _);
+
+    private double[] Execute(string request, out double? captureUntil)
     {
         var fields = request.TrimEnd('\r', '\n').Split('|');
         string operation = fields[0].ToUpperInvariant();
         lock (bench.Gate)
         {
+            captureUntil = null;
             if (operation == "PING") return [0, 1];
-            if (!bench.Usb) return [-6];
-            if (fields.Length != 8) return [-2];
-            string physical = fields[1].Trim().ToLowerInvariant();
-            if (!physical.StartsWith("mydaq1/", StringComparison.Ordinal)) return [-1];
-            string channel = physical[7..];
-            double now = bench.Clock.Elapsed.TotalSeconds;
-            LastRequest = $"{operation} · {fields[1].Trim()}";
-            if (operation == "RESET")
+            double[] result = ExecuteRequest(operation, fields, out captureUntil);
+            if (fields.Length == 8)
             {
-                bench.ResetOutputs();
-                return [0];
+                string channel = fields[1].Trim();
+                var activity = new DaqActivity(operation, channel, (int)result[0]);
+                if (operation == "AI")
+                {
+                    if (result.Length > 1)
+                    {
+                        double minimum = result[1];
+                        double maximum = minimum;
+                        foreach (double sample in result.AsSpan(2))
+                        {
+                            minimum = Math.Min(minimum, sample);
+                            maximum = Math.Max(maximum, sample);
+                        }
+                        activity = activity with { SampleCount = result.Length - 1, Minimum = minimum, Maximum = maximum };
+                    }
+                    LastAnalogReading = activity;
+                }
+                if (operation == "OHM" && result[0] == 0)
+                    activity = activity with { ResistanceOhms = result[1] };
+                LastActivity = activity;
             }
-            if (operation == "OHM" && channel == "dmm")
-            {
-                double resistance = bench.Ohms(now);
-                return double.IsNaN(resistance) ? [-8] : resistance >= 100_000_000 ? [-3] : [0, resistance];
-            }
-            string terminal = fields[2].Trim().ToLowerInvariant().TrimStart('/');
-            if (terminal.StartsWith("mydaq1/", StringComparison.Ordinal)) terminal = terminal[7..];
-            int pfi = Numbered(terminal, "pfi", 3);
-            if (operation == "FREQ" && channel == "ctr0")
-                return pfi < 0 ? [-1] : Frequency(pfi, now);
-            int line = Numbered(channel, "port0/line", 7);
-            if (operation is "DI" or "DO" && (channel == "port0" || line >= 0))
-                return Digital(operation, line, fields[7], now);
-            int analog = Numbered(channel, operation == "AI" ? "ai" : "ao", 1);
-            if (operation is not ("AI" or "AO") || analog < 0) return [-1];
-            if (!TryNumber(fields[3], out double rate) || rate is < 1 or > 200_000 ||
-                !int.TryParse(fields[4], NumberStyles.None, Invariant, out int count) || count is < 1 or > MaxSamples ||
-                !TryNumber(fields[5], out double range) || (range != 2 && range != 10) ||
-                fields[6] is not ("0" or "1")) return [-2];
-
-            bool repeat = fields[6] == "1";
-            if (operation == "AI")
-                return count / rate > 1.5 ? [-2] : AnalogIn(analog, rate, count, range, repeat, now);
-            if (!ParseSamples(fields[7], out var samples) || samples.Length != count || samples.Any(x => Math.Abs(x) > range))
-                return [-2];
-
-            bench.Analog[analog] = new(samples, rate, repeat, now);
-            return bench.Snapshot(now).Overloaded ? [-4] : [0];
+            return result;
         }
     }
 
-    private double[] AnalogIn(int analog, double rate, int count, double range, bool continuous, double now)
+    private double[] ExecuteRequest(string operation, string[] fields, out double? captureUntil)
     {
-        string cursor = $"ai{analog}";
-        double time = now;
-        if (continuous && bench.NextSample.TryGetValue(cursor, out double next) && Math.Abs(next - now) <= 2)
-            time = next;
+        captureUntil = null;
+        if (!bench.Usb) return [-6];
+        if (fields.Length != 8) return [-2];
+        string physical = fields[1].Trim().ToLowerInvariant();
+        if (!physical.StartsWith("mydaq1/", StringComparison.Ordinal)) return [-1];
+        string channel = physical[7..];
+        double now = bench.Clock.Elapsed.TotalSeconds;
+        LastElectricalIssue = null;
+        Circuit circuit = bench.Observe(now, checkPeaks: true);
+        if (bench.ProtectionTrip is not null) return [-4];
+        if (operation == "RESET")
+        {
+            bench.ResetOutputs();
+            return [0];
+        }
+        if (operation == "OHM" && channel == "dmm")
+        {
+            if (MyDaqLimits.DmmVoltage(circuit) is { } issue) return Reject(-8, issue);
+            var measurement = MyDaqLimits.ResolveResistance(bench.DmmResistance(now));
+            return measurement is { } value ? [0, value] : [-3];
+        }
+        string terminal = fields[2].Trim().ToLowerInvariant().TrimStart('/');
+        if (terminal.StartsWith("mydaq1/", StringComparison.Ordinal)) terminal = terminal[7..];
+        if (operation == "FREQ" && channel == "ctr0")
+            return terminal == "pfi1" ? Frequency(1, now, circuit) :
+                Reject(-1, new("DIO1", "Bei der Frequenzmessung mit ctr0 liegt das Signal an PFI1 / DIO1 (GATE)."));
+        int line = Numbered(channel, "port0/line", 7);
+        if (operation is "DI" or "DO" && (channel == "port0" || line >= 0))
+            return Digital(operation, line, fields[7], now, circuit);
+        int analog = Numbered(channel, operation == "AI" ? "ai" : "ao", 1);
+        if (operation is not ("AI" or "AO") || analog < 0) return [-1];
+        if (!TryNumber(fields[3], out double rate) || rate is < 1 or > 200_000 ||
+            !int.TryParse(fields[4], NumberStyles.None, Invariant, out int count) || count is < 1 or > MaxSamples ||
+            !TryNumber(fields[5], out double range) || !MyDaqLimits.IsAnalogRange(range) ||
+            fields[6] is not ("0" or "1")) return [-2];
+
+        bool repeat = fields[6] == "1";
+        if (operation == "AI")
+            return count / rate > 1.5 ? [-2] : AnalogIn(analog, rate, count, range, repeat, now, out captureUntil);
+        if (!ParseSamples(fields[7], out var samples) || samples.Length != count)
+            return [-2];
+        string pin = $"AO{analog}";
+        if (samples.Any(x => Math.Abs(x) > range))
+            return Reject(-2, new(pin, $"Der angeforderte Wert liegt außerhalb des eingestellten Bereichs von ±{range:g} V an {pin}."));
+        if (bench.Analog[1 - analog] is { } other && other.Range != range)
+            return Reject(-2, new(pin, "AO0 und AO1 brauchen gleichzeitig denselben Spannungsbereich."));
+
+        for (int i = 0; i < samples.Length; i++)
+            samples[i] = MyDaqLimits.QuantizeVoltage(samples[i], range);
+        bench.SetAnalogOutput(analog, samples, rate, repeat, now, range, circuit);
+        bench.Observe(now, checkPeaks: true);
+        return bench.ProtectionTrip is not null ? [-4] : [0];
+    }
+
+    private double[] Reject(int code, ElectricalIssue issue)
+    {
+        LastElectricalIssue = issue;
+        return [code];
+    }
+
+    private double[] AnalogIn(int analog, double rate, int count, double range, bool continuous, double now, out double? captureUntil)
+    {
+        captureUntil = null;
+        // Use the sample grid across block boundaries. Restart after an idle client or a rate change.
+        const double idleSeconds = 2;
+        AnalogCapture capture = new(now, 0, rate, now);
+        if (continuous && bench.Captures[analog] is { } running && running.Rate == rate && now - running.LastRequest <= idleSeconds)
+            capture = running;
+        bench.Captures[analog] = null;
         var values = new double[count + 1];
         for (int i = 0; i < count; i++)
         {
-            var sample = bench.Read($"AI{analog}+", $"AI{analog}-", time + i / rate, analog: true);
-            if (sample.Conflict) return [-4];
+            var sample = bench.Read($"AI{analog}+", $"AI{analog}-", capture.TimeAt(i), analog: true);
+            if (sample.Fault is { } issue) return Reject(-4, issue);
             if (!sample.Driven) return [-3];
-            if (Math.Abs(sample.Level) > range) values[0] = 1;
-            double quantized = Math.Round(sample.Level / range * 32768);
-            values[i + 1] = Math.Clamp(quantized, -32768, 32767) * range / 32768;
+            if (Math.Abs(sample.Level) > range)
+            {
+                values[0] = 1;
+                LastElectricalIssue ??= new($"AI{analog}+", $"AI{analog} erreicht den Messbereich von ±{range:g} V. Die Messwerte werden begrenzt.");
+            }
+            values[i + 1] = MyDaqLimits.QuantizeVoltage(sample.Level, range);
         }
+        captureUntil = capture.TimeAt(count);
         if (continuous)
-            bench.NextSample[cursor] = time + count / rate;
-        else
-            bench.NextSample.Remove(cursor);
+            bench.Captures[analog] = capture with { NextIndex = capture.NextIndex + count, LastRequest = now };
         return values;
     }
 
-    private double[] Digital(string operation, int line, string value, double now)
+    private double[] Digital(string operation, int line, string value, double now, Circuit circuit)
     {
         if (operation == "DO")
         {
@@ -170,26 +230,31 @@ internal sealed class DaqServer : IDisposable
             int bits = (int)raw;
             if (line >= 0) bench.Digital[line] = bits != 0;
             else for (int i = 0; i < 8; i++) bench.Digital[i] = (bits & (1 << i)) != 0;
-            return bench.Snapshot(now).Overloaded ? [-4] : [0];
+            bench.Observe(now, checkPeaks: true);
+            return bench.ProtectionTrip is not null ? [-4] : [0];
         }
 
         int result = 0;
-        Circuit circuit = bench.Snapshot(now);
-        if (circuit.Overloaded) return [-4];
         for (int i = 0; i < 8; i++)
         {
             if (line >= 0 && line != i) continue;
-            double volts = circuit.Value($"DIO{i}") - circuit.Value("DGND");
-            if (volts < -0.3 || volts > 5.25) return [-4];
-            if (volts is > 0.8 and < 2) return [-5];
-            if (volts >= 2) result |= 1 << i;
+            string pin = $"DIO{i}";
+            if (bench.AnalogOutputNeedsDigitalReference(circuit, pin))
+                return Reject(-3, MyDaqLimits.MissingDigitalReference(pin));
+            double volts = circuit.Value(pin) - circuit.Value("DGND");
+            if (volts is > MyDaqLimits.DigitalLowMax and < MyDaqLimits.DigitalHighMin)
+                return Reject(-5, new(pin, $"{pin} liegt bei {volts:0.###} V. Zwischen 0,8 und 2 V ist der Logikpegel undefiniert."));
+            if (volts >= MyDaqLimits.DigitalHighMin) result |= 1 << i;
         }
         return [0, line >= 0 ? result >> line : result];
     }
 
-    private double[] Frequency(int pfi, double now)
+    private double[] Frequency(int pfi, double now, Circuit circuit)
     {
         if (bench.Digital[pfi].HasValue) return [-7];
+        string pin = $"DIO{pfi}";
+        if (bench.AnalogOutputNeedsDigitalReference(circuit, pin))
+            return Reject(-3, MyDaqLimits.MissingDigitalReference(pin));
         double highest = bench.Analog.Where(a => a != null)
             .Select(a => a!.Rate).DefaultIfEmpty(1000).Max();
         double rate = Math.Clamp(highest, 2000, 20_000);
@@ -200,10 +265,10 @@ internal sealed class DaqServer : IDisposable
         for (int i = 0; i < MaxCounterSamples; i++)
         {
             double offset = i / rate;
-            var reading = bench.Read($"DIO{pfi}", "DGND", now + offset);
-            if (reading.Conflict || reading.Level is < -0.3 or > 5.25) return [-4];
-            if (reading.Level <= 0.8) armed = true;
-            if (reading.Level < 2 || !armed) continue;
+            var reading = bench.Read(pin, "DGND", now + offset);
+            if (reading.Fault is { } issue) return Reject(-4, issue);
+            if (reading.Level <= MyDaqLimits.DigitalLowMax) armed = true;
+            if (reading.Level < MyDaqLimits.DigitalHighMin || !armed) continue;
             if (edges++ == 0) first = offset;
             last = offset;
             armed = false;

@@ -24,7 +24,7 @@ internal sealed partial class WorkbenchWindow : Window
     private readonly DaqServer server;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private readonly Canvas board = new() { Width = BoardWidth, Height = BoardHeight, ClipToBounds = true };
-    private readonly Canvas wires = new() { Width = BoardWidth, Height = BoardHeight, IsHitTestVisible = false };
+    private readonly Canvas wires = new() { Width = BoardWidth, Height = BoardHeight, Focusable = true };
     private readonly Dictionary<string, Button> sockets = [];
     private readonly ListBox cableList = new() { MaxHeight = 124, BorderThickness = new Thickness(0) };
     private readonly ComboBox fault = new();
@@ -33,7 +33,15 @@ internal sealed partial class WorkbenchWindow : Window
     private readonly Border statePill = new() { CornerRadius = new CornerRadius(14), Padding = new Thickness(11, 5, 11, 5),
         HorizontalAlignment = HorizontalAlignment.Right };
     private readonly TextBlock status = new() { FontSize = 13, FontWeight = FontWeights.SemiBold };
-    private readonly TextBlock lastRequest = new() { FontSize = 12, HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly Border electricalNotice = new() { Name = "ElectricalNotice", Visibility = Visibility.Collapsed };
+    private readonly TextBlock electricalMessage = new() { Name = "ElectricalMessage", TextWrapping = TextWrapping.Wrap };
+    private readonly Button rearm = new() { Content = "Schutz zurücksetzen", Name = "ResetProtection" };
+    private ElectricalIssue? displayedIssue;
+    private readonly TextBlock lastRequest = new() { FontSize = 12, HorizontalAlignment = HorizontalAlignment.Right,
+        MaxWidth = 360, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock outputState = new() { Name = "AnalogOutputState", TextWrapping = TextWrapping.Wrap };
+    private readonly Button[] stopAnalog = [new(), new()];
+    private readonly TextBlock lastAnalogRead = new() { Name = "LastAnalogRead", TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock portTitle = new() { FontSize = 17, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock portDescription = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap, MinHeight = 47 };
     private readonly TextBlock instruction = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap, MinHeight = 37 };
@@ -69,6 +77,9 @@ internal sealed partial class WorkbenchWindow : Window
         var header = BuildHeader();
         DockPanel.SetDock(header, Dock.Top);
         root.Children.Add(header);
+        DockPanel.SetDock(BuildElectricalNotice(), Dock.Top);
+        root.Children.Add(electricalNotice);
+        KeyboardNavigation.SetIsTabStop(wires, false);
 
         workspace.ColumnDefinitions.Add(new ColumnDefinition());
         workspace.ColumnDefinitions.Add(new ColumnDefinition());
@@ -94,6 +105,11 @@ internal sealed partial class WorkbenchWindow : Window
         Closed += (_, _) => timer.Stop();
         PreviewKeyDown += (_, e) =>
         {
+            if (e.Key == Key.Delete && (wires.IsKeyboardFocused || cableList.IsKeyboardFocusWithin))
+            {
+                e.Handled = RemoveSelectedCable();
+                return;
+            }
             if (e.Key != Key.Escape || selected is null) return;
             ResetSelection();
             ShowMessage("Anschlusswahl aufgehoben.");
@@ -121,6 +137,35 @@ internal sealed partial class WorkbenchWindow : Window
         content.Children.Add(right);
         return new Border { Background = Theme("Card"), BorderBrush = Theme("Rule"),
             BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(24, 12, 24, 12), Child = content };
+    }
+
+    private Border BuildElectricalNotice()
+    {
+        electricalNotice.Background = Theme("WarningSurface");
+        electricalNotice.BorderBrush = Theme("Rule");
+        electricalNotice.BorderThickness = new Thickness(0, 0, 0, 1);
+        electricalNotice.Padding = new Thickness(24, 9, 24, 9);
+        electricalMessage.Foreground = Theme("Warning");
+        electricalMessage.FontWeight = FontWeights.SemiBold;
+        electricalMessage.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetLiveSetting(electricalMessage, AutomationLiveSetting.Assertive);
+        rearm.Style = (Style)FindResource("Action");
+        rearm.Margin = new Thickness(12, 0, 0, 0);
+        rearm.Click += (_, _) =>
+        {
+            lock (model.Gate)
+            {
+                server.ClearElectricalIssue();
+                model.ResetProtection(model.Clock.Elapsed.TotalSeconds);
+            }
+            ReadBoard();
+        };
+        var row = new DockPanel();
+        DockPanel.SetDock(rearm, Dock.Right);
+        row.Children.Add(rearm);
+        row.Children.Add(electricalMessage);
+        electricalNotice.Child = row;
+        return electricalNotice;
     }
 
     private void BuildStation()
@@ -173,6 +218,8 @@ internal sealed partial class WorkbenchWindow : Window
             Padding = new Thickness(9, 6, 9, 2), Margin = new Thickness(0, 5, 0, 0), Child = instruction });
         side.Children.Add(connector);
         side.Children.Add(Separator());
+        side.Children.Add(BuildLabViewStatus());
+        side.Children.Add(Separator());
 
         var cables = new DockPanel();
         DockPanel.SetDock(cableCount, Dock.Right);
@@ -194,16 +241,20 @@ internal sealed partial class WorkbenchWindow : Window
         remove.Margin = new Thickness(0, 6, 0, 0);
         cableActions.Children.Add(remove);
         side.Children.Add(cableActions);
-        cableList.SelectionChanged += (_, _) => { if (!refreshing) SelectCable(); };
-        fault.SelectionChanged += (_, _) => ChangeCableFault();
-        remove.Click += (_, _) =>
+        cableList.SelectionChanged += (_, _) =>
         {
-            int index = cableList.SelectedIndex;
-            if (index < 0) return;
-            lock (model.Gate) model.Cables.RemoveAt(index);
-            RefreshCables();
-            ShowMessage("Leitung entfernt.");
+            if (refreshing) return;
+            if (cableList.SelectedIndex >= 0 && selected is not null)
+            {
+                selected = null;
+                inspected = null;
+                SetPortHelp(null);
+            }
+            SelectCable();
         };
+        fault.SelectionChanged += (_, _) => ChangeCableFault();
+        remove.ToolTip = "Entfernt nur die ausgewählte Leitung. In der Liste oder auf dem Kabel geht auch Entf.";
+        remove.Click += (_, _) => RemoveSelectedCable();
         side.Children.Add(Separator());
 
         double[] values = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 15000];
@@ -236,12 +287,16 @@ internal sealed partial class WorkbenchWindow : Window
         };
         deviceControls.Children.Add(usb);
         deviceControls.Children.Add(adapter);
-        var reset = new Button { Content = "Ausgänge freigeben", Style = (Style)FindResource("Action"),
+        var reset = new Button { Content = "Alle Ausgänge stoppen", Style = (Style)FindResource("Action"),
             Margin = new Thickness(0, 6, 0, 0),
             ToolTip = "Setzt die Analogausgänge zurück und schaltet die Digitalanschlüsse auf Eingang." };
         reset.Click += (_, _) =>
         {
-            lock (model.Gate) model.ResetOutputs();
+            lock (model.Gate)
+            {
+                model.ResetOutputs();
+                server.ClearElectricalIssue();
+            }
             ReadBoard();
             ShowMessage("Analogausgänge zurückgesetzt. Digitalanschlüsse stehen auf Eingang.");
         };
@@ -253,6 +308,45 @@ internal sealed partial class WorkbenchWindow : Window
         return new Border { Background = Theme("Card"), BorderBrush = Theme("Rule"), BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10), Padding = new Thickness(13, 12, 13, 13), Child = side,
             VerticalAlignment = VerticalAlignment.Top };
+    }
+
+    private StackPanel BuildLabViewStatus()
+    {
+        var panel = new StackPanel();
+        panel.Children.Add(SectionHeading("LabVIEW"));
+        panel.Children.Add(new TextBlock { Text = "Adresse im Feld „Physikalischer Kanal“ eingeben.",
+            FontSize = 12, Foreground = Theme("Quiet"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 5) });
+        var channelList = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
+        foreach (string address in new[] { "myDAQ1/ao0", "myDAQ1/ai0", "myDAQ1/ao1", "myDAQ1/ai1" })
+        {
+            channelList.Children.Add(new TextBlock { Text = address, FontFamily = new FontFamily("Consolas"),
+                FontSize = 13, Margin = new Thickness(0, 1, 0, 2) });
+        }
+        panel.Children.Add(channelList);
+        outputState.Margin = new Thickness(0, 6, 0, 2);
+        outputState.FontWeight = FontWeights.SemiBold;
+        lastAnalogRead.FontSize = 12;
+        lastAnalogRead.Foreground = Theme("Quiet");
+        panel.Children.Add(outputState);
+        var stops = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2, Margin = new Thickness(0, 3, 0, 6) };
+        for (int index = 0; index < stopAnalog.Length; index++)
+        {
+            int channel = index;
+            Button stop = stopAnalog[channel];
+            stop.Content = $"AO{channel} stoppen";
+            stop.Name = $"StopAo{channel}";
+            stop.Style = (Style)FindResource("Action");
+            stop.Margin = channel == 0 ? new Thickness(0, 0, 3, 0) : new Thickness(3, 0, 0, 0);
+            stop.Click += (_, _) =>
+            {
+                lock (model.Gate) model.Analog[channel] = null;
+                ReadBoard();
+            };
+            stops.Children.Add(stop);
+        }
+        panel.Children.Add(stops);
+        panel.Children.Add(lastAnalogRead);
+        return panel;
     }
 
     private Expander BuildGuide()
@@ -343,13 +437,15 @@ internal sealed partial class WorkbenchWindow : Window
                 return;
             }
             model.Cables.Add(new(other, socket));
+            server.ClearElectricalIssue();
             index = model.Cables.Count - 1;
         }
         selected = null;
         inspected = socket.Id;
         SetPortHelp(socket);
         RefreshCables(index);
-        ShowMessage("Leitung gesteckt. Du kannst sie unter Leitungen auswählen und ihren Zustand ändern.");
+        ReadBoard();
+        ShowMessage("Leitung gesteckt. Klicke auf ein Kabel oder wähle es unter Leitungen.");
     }
 
     private void ResetSelection()
@@ -357,6 +453,34 @@ internal sealed partial class WorkbenchWindow : Window
         selected = null;
         inspected = null;
         RedrawWires();
+    }
+
+    private bool RemoveSelectedCable()
+    {
+        int index = cableList.SelectedIndex;
+        if (index < 0) return false;
+        lock (model.Gate)
+        {
+            model.Cables.RemoveAt(index);
+            server.ClearElectricalIssue();
+        }
+        RefreshCables();
+        ReadBoard();
+        ShowMessage("Ausgewählte Leitung entfernt.");
+        return true;
+    }
+
+    private void SelectCableOnBoard(int index)
+    {
+        selected = null;
+        inspected = null;
+        SetPortHelp(null);
+        if (cableList.SelectedIndex == index)
+            SelectCable();
+        else
+            cableList.SelectedIndex = index;
+        cableList.ScrollIntoView(cableList.Items[index]);
+        wires.Focus();
     }
 
     private void RefreshCables(int index = -1)
@@ -415,8 +539,13 @@ internal sealed partial class WorkbenchWindow : Window
         int index = cableList.SelectedIndex;
         if (refreshing || index < 0 || fault.SelectedItem is not string label) return;
         CableFault next = Faults.Single(item => item.Label == label).Fault;
-        lock (model.Gate) model.Cables[index] = model.Cables[index] with { Fault = next };
+        lock (model.Gate)
+        {
+            model.Cables[index] = model.Cables[index] with { Fault = next };
+            server.ClearElectricalIssue();
+        }
         RefreshCables(index);
+        ReadBoard();
         ShowMessage($"Leitungszustand geändert · {label}.");
     }
 

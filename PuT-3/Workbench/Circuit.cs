@@ -9,13 +9,35 @@ internal sealed record Cable(Socket A, Socket B, CableFault Fault = CableFault.I
     public override string ToString() => $"{A.Id} ↔ {B.Id}";
 }
 internal readonly record struct Edge(string A, string B, double Ohms);
-internal readonly record struct Source(string A, string B, double Volts, double Ohms, double MaxAmps);
-internal sealed record Output(double[] Samples, double Rate, bool Repeat, double Start)
+internal readonly record struct Source(string A, string B, double Volts, double Ohms, double MaxAmps, double SupplyVolts);
+internal readonly record struct AnalogCapture(double Origin, long NextIndex, double Rate, double LastRequest)
 {
+    public double TimeAt(int offset) => Origin + (NextIndex + offset) / Rate;
+}
+
+internal sealed record Output(double[] Samples, double Rate, bool Repeat, double Start, double Range)
+{
+    public double Minimum { get; } = Samples.Min();
+    public double Maximum { get; } = Samples.Max();
+
+    public (double Minimum, double Maximum) PeaksAfter(double time)
+    {
+        double elapsedSamples = (time - Start) * Rate;
+        if (Repeat || elapsedSamples < 1) return (Minimum, Maximum);
+        int first = (int)Math.Min(elapsedSamples, Samples.Length - 1);
+        double min = Samples[first], max = min;
+        for (int i = first + 1; i < Samples.Length; i++)
+        {
+            min = Math.Min(min, Samples[i]);
+            max = Math.Max(max, Samples[i]);
+        }
+        return (min, max);
+    }
+
     public double At(double time)
     {
-        double sample = Math.Max(0, (time - Start) * Rate);
-        int index = Repeat ? (int)(sample % Samples.Length) : (int)Math.Min(sample, Samples.Length - 1);
+        double indexAtTime = Math.Floor(Math.Max(0, (time - Start) * Rate) + 0.0000001);
+        int index = Repeat ? (int)(indexAtTime % Samples.Length) : (int)Math.Min(indexAtTime, Samples.Length - 1);
         return Samples[index];
     }
 }
@@ -52,7 +74,7 @@ internal sealed class Bench
     public readonly object Gate = new();
     public readonly List<Cable> Cables = [];
     // J4/J5: 0 offen, 1 externe Buchse, 2 Potentiometer.
-    public int[] Jumpers { get; } = [0, 1, 1, 1, 1, 0, 1];
+    public int[] Jumpers { get; } = [0, 1, 1, 1, 1, 0, 0];
     public double[] Pots { get; } = [0.5, 0.5];
     public bool[] Buttons { get; } = new bool[4];
     public bool Usb { get; set; } = true;
@@ -61,13 +83,35 @@ internal sealed class Bench
     public readonly Stopwatch Clock = Stopwatch.StartNew();
     public readonly Output?[] Analog = new Output?[2];
     public readonly bool?[] Digital = new bool?[8];
-    public readonly Dictionary<string, double> NextSample = [];
+    public readonly AnalogCapture?[] Captures = new AnalogCapture?[2];
+    public ElectricalIssue? ProtectionTrip { get; private set; }
+    public bool Powered => Usb && ProtectionTrip is null;
 
     public void ResetOutputs()
     {
         Array.Clear(Analog);
         Array.Clear(Digital);
-        NextSample.Clear();
+        Array.Clear(Captures);
+    }
+
+    public void SetAnalogOutput(int channel, double[] samples, double rate, bool repeat, double now, double range, Circuit circuit)
+    {
+        if (repeat && Analog[channel] is { Repeat: true } current && current.Rate == rate && current.Range == range &&
+            samples.AsSpan().SequenceEqual(current.Samples)) return;
+
+        Analog[channel] = new(samples, rate, repeat, now, range);
+        string pin = $"AO{channel}";
+        for (int input = 0; input < Captures.Length; input++)
+            if (circuit.SharesNode(pin, $"AI{input}+") || circuit.SharesNode(pin, $"AI{input}-"))
+                Captures[input] = null;
+    }
+
+    public bool AnalogOutputNeedsDigitalReference(Circuit circuit, string pin)
+    {
+        if (circuit.SharesNode("AGND", "DGND")) return false;
+        for (int i = 0; i < Analog.Length; i++)
+            if (Analog[i] is not null && circuit.SharesNode($"AO{i}", pin)) return true;
+        return false;
     }
 
     public void Connect(string a, string b, CableFault fault = CableFault.Intact) =>
@@ -82,47 +126,83 @@ internal sealed class Bench
         Jumpers[4] = 2;
         Pots[1] = 0.75;
         Resistance = 3000;
+        Jumpers[0] = 1; // Provide a common return path for AO to PFI.
+        Jumpers[6] = 0; // Disconnect the LED load from the analog source.
     }
 
-    public (double Level, bool Driven, bool Conflict) Read(string a, string b, double t, bool analog = false)
+    public bool ResetProtection(double t)
+    {
+        ProtectionTrip = null;
+        ResetOutputs();
+        Observe(t);
+        return Powered;
+    }
+
+    public Circuit Observe(double t, bool checkPeaks = false)
     {
         Circuit circuit = Snapshot(t);
-        double value = circuit.Value(a) - circuit.Value(b);
-        bool defined = !analog || (circuit.Driven(a) && circuit.Driven(b));
-        bool fault = circuit.Overloaded || (analog && (Math.Abs(circuit.Value(a)) > 10.5 || Math.Abs(circuit.Value(b)) > 10.5));
-        return (value, defined, fault);
+        if (!Powered) return circuit;
+        var issue = MyDaqLimits.Trip(circuit);
+        if (issue is null && checkPeaks)
+        {
+            // Probe both future extrema when the other AO is constant. Two varying outputs are checked at sample time.
+            var first = Analog[0]?.PeaksAfter(t) ?? (Minimum: 0, Maximum: 0);
+            var second = Analog[1]?.PeaksAfter(t) ?? (Minimum: 0, Maximum: 0);
+            bool firstVaries = first.Minimum != first.Maximum;
+            bool secondVaries = second.Minimum != second.Maximum;
+            if (firstVaries != secondVaries)
+            {
+                int varying = firstVaries ? 0 : 1;
+                var peaks = firstVaries ? first : second;
+                issue = MyDaqLimits.Trip(Snapshot(t, varying, peaks.Minimum)) ??
+                    MyDaqLimits.Trip(Snapshot(t, varying, peaks.Maximum));
+            }
+        }
+        if (issue is not null)
+        {
+            ProtectionTrip = issue;
+            ResetOutputs();
+        }
+        return circuit;
     }
 
-    public double Ohms(double t)
+    public (double Level, bool Driven, ElectricalIssue? Fault) Read(string a, string b, double t, bool analog = false)
     {
-        var powered = Snapshot(t);
-        if (Math.Abs(powered.Value("DMM+") - powered.Value("DMM-")) > 0.05)
-            return double.NaN;
+        Circuit circuit = Observe(t);
+        double value = circuit.Value(a) - circuit.Value(b);
+        bool defined = !analog || (circuit.Driven(a) && circuit.Driven(b));
+        var issue = ProtectionTrip ?? (analog ? MyDaqLimits.WorkingVoltage(circuit, a) ??
+            MyDaqLimits.WorkingVoltage(circuit, b) : null);
+        return (value, defined, issue);
+    }
+
+    public double DmmResistance(double t)
+    {
+        // Solve V/I with unit current as normalization. NI does not specify the physical test current.
         Circuit isolated = new(Wires(t), [new("R-A", "R-B", Resistance)], [], "DMM-", "DMM+");
         return isolated.Value("DMM+");
     }
 
-    public Circuit Snapshot(double t)
+    private Circuit Snapshot(double t, int peakChannel = -1, double peakValue = 0)
     {
-        var edges = new List<Edge> { new("R-A", "R-B", Resistance), new("DGND", "AGND", 0.1) };
+        var edges = new List<Edge> { new("R-A", "R-B", Resistance) };
         var sources = new List<Source>();
-        if (Usb)
+        if (Powered)
         {
-            sources.Add(new("+15", "AGND", 15, 1, .032));
-            sources.Add(new("-15", "AGND", -15, 1, .032));
-            sources.Add(new("+5", "DGND", 5, 1, .100));
+            sources.Add(new("+15", "AGND", 15, 1, MyDaqLimits.Rail15Amps, 15));
+            sources.Add(new("-15", "AGND", -15, 1, MyDaqLimits.Rail15Amps, 15));
+            sources.Add(new("+5", "DGND", 5, 1, MyDaqLimits.Rail5Amps, 5));
             for (int i = 0; i < Analog.Length; i++)
                 if (Analog[i] is { } ao)
-                    sources.Add(new($"AO{i}", "AGND", ao.At(t), 1, .002));
+                    sources.Add(new($"AO{i}", "AGND", i == peakChannel ? peakValue : ao.At(t), MyDaqLimits.AnalogOutputOhms, MyDaqLimits.AnalogOutputAmps, 15));
             for (int i = 0; i < Digital.Length; i++)
             {
                 string pin = $"DIO{i}";
                 if (Digital[i] is bool state)
-                    sources.Add(new(pin, "DGND", state ? 3.3 : 0, 40, .004));
+                    sources.Add(new(pin, "DGND", state ? MyDaqLimits.DigitalHighOutput : 0, 40,
+                        MyDaqLimits.DigitalOutputAmps, MyDaqLimits.DigitalHighOutput));
                 else
                     edges.Add(new(pin, "DGND", 75_000));
-                if (Adapter && Jumpers[6] != 0)
-                    edges.Add(new(pin, "DGND", 4700));
             }
             if (Adapter && Jumpers[5] != 0)
                 edges.Add(new("DIO5", "DGND", 10_000));
@@ -136,7 +216,7 @@ internal sealed class Bench
                 edges.Add(new("-15", pot, 2490 + Pots[i] * 10_000));
             }
         }
-        return new(Wires(t), edges, sources, "AGND");
+        return new(Wires(t), edges, sources, "AGND", loadLeds: Powered && Adapter && Jumpers[6] != 0);
     }
 
     private IEnumerable<(string A, string B)> Wires(double t)
@@ -173,10 +253,11 @@ internal sealed class Circuit
     private readonly HashSet<string> driven;
     private readonly double[] volts;
     private readonly string reference;
-    public bool Overloaded { get; }
+    public ElectricalIssue? OutputFault { get; }
+    public double OutputWatts { get; }
 
     public Circuit(IEnumerable<(string A, string B)> wires, IReadOnlyList<Edge> edges,
-        IReadOnlyList<Source> sources, string ground, string? inject = null)
+        IReadOnlyList<Source> sources, string ground, string? inject = null, bool loadLeds = false)
     {
         foreach (var s in Bench.Sockets.Values)
         {
@@ -205,8 +286,60 @@ internal sealed class Circuit
         foreach (var e in edges) Stamp(e.A, e.B, 1 / e.Ohms, 0);
         foreach (var s in sources) Stamp(s.A, s.B, 1 / s.Ohms, s.Volts / s.Ohms);
         if (inject != null && Index(inject) is int at && at >= 0) rhs[at] += 1;
-        volts = Solve(matrix, rhs);
-        Overloaded = sources.Any(s => Math.Abs(s.Volts - (Value(s.A) - Value(s.B))) / s.Ohms > s.MaxAmps + 1e-7);
+        int conductingLeds = 0;
+        volts = loadLeds ? SolveWithLeds() : Solve(matrix, rhs);
+        double highestOverload = 1;
+        foreach (var source in sources)
+        {
+            double current = Math.Abs(source.Volts - (Value(source.A) - Value(source.B))) / source.Ohms;
+            OutputWatts += source.SupplyVolts * current;
+            double ratio = current / (source.MaxAmps + 1e-7);
+            if (ratio <= highestOverload) continue;
+            highestOverload = ratio;
+            string message = $"{source.A} müsste im Modell ca. {current * 1000:0.##} mA liefern oder aufnehmen. Grenze: {source.MaxAmps * 1000:0.##} mA.";
+            if (source.A is "AO0" or "AO1" && HasLedLoad(source.A))
+                message += " J7 ist geschlossen. Die Adapter-LEDs belasten diese Leitung. Für die Frequenzmessung J7 öffnen und den Schutz zurücksetzen.";
+            OutputFault = new(source.A, message);
+        }
+
+        bool HasLedLoad(string output)
+        {
+            for (int line = 0; line < 8; line++)
+                if ((conductingLeds & (1 << line)) != 0 && SharesNode(output, $"DIO{line}")) return true;
+            return false;
+        }
+
+        double[] SolveWithLeds()
+        {
+            // RN1 is 680 Ω per LED. A fixed forward voltage approximates the red LEDs on the miniAdap-1.
+            const double forwardVolts = 1.8;
+            const double conductance = 1.0 / 680;
+            var baseMatrix = (double[,])matrix.Clone();
+            var baseRhs = (double[])rhs.Clone();
+            var levels = Solve(matrix, rhs);
+            int dgnd = Index("DGND");
+            for (int step = 0; step < 8; step++)
+            {
+                double groundLevel = dgnd >= 0 ? levels[dgnd] : 0;
+                int conducting = 0;
+                for (int line = 0; line < 8; line++)
+                {
+                    int pin = Index($"DIO{line}");
+                    if ((pin >= 0 ? levels[pin] : 0) - groundLevel > forwardVolts + 1e-9)
+                        conducting |= 1 << line;
+                }
+                if (conducting == conductingLeds) break;
+
+                conductingLeds = conducting;
+                matrix = (double[,])baseMatrix.Clone();
+                rhs = (double[])baseRhs.Clone();
+                for (int line = 0; line < 8; line++)
+                    if ((conductingLeds & (1 << line)) != 0)
+                        Stamp($"DIO{line}", "DGND", conductance, forwardVolts * conductance);
+                levels = Solve(matrix, rhs);
+            }
+            return levels;
+        }
 
         void Stamp(string a, string b, double conductance, double current)
         {
@@ -226,6 +359,7 @@ internal sealed class Circuit
     }
 
     private int Index(string name) => node.GetValueOrDefault(Root(name), -1);
+    public bool SharesNode(string first, string second) => Root(first) == Root(second);
     public bool Driven(string name) => driven.Contains(Root(name));
     public double Value(string name) => Index(name) is int i && i >= 0 ? volts[i] : 0;
 

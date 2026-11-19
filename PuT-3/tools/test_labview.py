@@ -29,6 +29,12 @@ def measure(mode, channel, *, pfi="_", rate=1000, count=1, value="_", continuous
     return float(status), float(dt), [float(x) for x in rest.split()]
 
 
+def express(mode, channel_index):
+    text = cli("Express Lauf", mode, channel_index)
+    status, value = re.search(r"RESULT\|([^|]+)\|([^\r\n]+)", text).groups()
+    return float(status), float(value)
+
+
 def wait_for_server():
     for attempt in range(70):
         try:
@@ -71,12 +77,17 @@ def main():
         check("5.1 native AI0 loopback through BNC", status == 0 and near(dt, 0.001) and
               len(data) == 4 and all(near(x, 3.25) for x in data))
         check("5.2 native DMM resistance", near(measure(6, "dmm")[2][0], 3000))
-        express = cli("Express Lauf", "myDAQ1/dmm")
-        express_status, express_resistance = re.search(r"RESULT\|([^|]+)\|([^\r\n]+)", express).groups()
-        check("5.2 NI-generated Express execution subVI", float(express_status) == 0 and near(float(express_resistance), 3000))
+        status, resistance = express(6, 15)  # DMM Widerstand, myDAQ1/dmm
+        check("5.2 Express DMM returns the scalar resistance", status == 0 and near(resistance, 3000))
+        check("Express generator configures AO1", express(8, 4)[0] == 0)  # AO Signal erzeugen, myDAQ1/ao1
+        status, voltage = express(1, 1)  # AI, myDAQ1/ai0
+        check("Express analog input reads the wired AO0", status == 0 and near(voltage, 3.25))
+        check("Express generator drives the wired PFI1", near(measure(5, "ctr0", pfi="PFI1")[2][0], 50, .2))
+        status, frequency = express(5, 14)  # CTR Frequenz fixes the gate terminal to PFI1.
+        check("Express CTR uses PFI1 without a separate PFI setting", status == 0 and near(frequency, 50, .2))
         check("5.3 LabVIEW rectangular generator at AO1", "RESULT|0.000000" in cli("Generator", "myDAQ1/ao1"))
         check("5.3 native frequency via PFI1", near(measure(5, "ctr0", pfi="PFI1")[2][0], 50, .2))
-        check("5.3 wrong PFI0 does not see the waveform", measure(5, "ctr0", pfi="PFI0")[0] == -5)
+        check("5.3 PFI0 is not the gate for frequency measurement", measure(5, "ctr0", pfi="PFI0")[0] == -1)
         check("5.4 LabVIEW rectangular generator at AO0", "RESULT|0.000000" in cli("Generator", "myDAQ1/ao0"))
         status, dt, data = measure(1, "ai0", count=400, rate=2000, continuous=True)
         edges = [i for i in range(1, len(data)) if data[i - 1] < 2.5 <= data[i]]
@@ -87,6 +98,9 @@ def main():
         check("Release channels before digital exercise", measure(7, "port0")[0] == 0)
         check("5.5 native 8-bit port output and readback", measure(4, "port0", value=131)[0] == 0 and
               measure(3, "port0")[2] == [131])
+        check("5.5 native single-line output preserves other bits", measure(4, "port0/line7", value=0)[0] == 0 and
+              measure(3, "port0")[2] == [3])
+        check("Express reset needs no channel", express(7, 0)[0] == 0 and measure(1, "ai0")[0] == -3)
         check("Invalid physical channel from LabVIEW", measure(1, "ai99")[0] == -1)
     finally:
         process.terminate()

@@ -1,8 +1,10 @@
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
@@ -287,34 +289,93 @@ internal sealed partial class WorkbenchWindow
         if (!Monitor.TryEnter(model.Gate)) return;
         try
         {
-            Circuit circuit = model.Snapshot(model.Clock.Elapsed.TotalSeconds);
-            power.Visibility = model.Usb ? Visibility.Visible : Visibility.Hidden;
+            Circuit circuit = model.Observe(model.Clock.Elapsed.TotalSeconds, checkPeaks: true);
+            power.Visibility = model.Powered ? Visibility.Visible : Visibility.Hidden;
             power.Fill = PowerLed;
             for (int i = 0; i < leds.Length; i++)
             {
-                bool on = model.Usb && model.Adapter && model.Jumpers[6] != 0 &&
-                    circuit.Value($"DIO{i}") - circuit.Value("DGND") >= 2;
+                bool on = model.Powered && model.Adapter && model.Jumpers[6] != 0 &&
+                    circuit.Value($"DIO{i}") - circuit.Value("DGND") >= MyDaqLimits.DigitalHighMin;
                 leds[i].Visibility = on ? Visibility.Visible : Visibility.Hidden;
                 leds[i].Fill = GlowingLed;
                 leds[i].Stroke = LedReflection;
             }
-            bool good = model.Usb && model.Adapter && !circuit.Overloaded;
-            status.Text = !model.Usb ? "USB getrennt" : circuit.Overloaded ? "Elektrischer Konflikt" :
-                !model.Adapter ? "Adapter abgezogen" : "Steckwerkbank bereit";
+            var trip = model.ProtectionTrip;
+            ElectricalIssue? issue = trip;
+            if (issue is null && model.Powered)
+                issue = MyDaqLimits.WorkingVoltage(circuit, "AI0+") ?? MyDaqLimits.WorkingVoltage(circuit, "AI0-") ??
+                    MyDaqLimits.WorkingVoltage(circuit, "AI1+") ?? MyDaqLimits.WorkingVoltage(circuit, "AI1-") ??
+                    MyDaqLimits.DmmVoltage(circuit) ?? server.LastElectricalIssue;
+
+            if (!Equals(issue, displayedIssue) || rearm.Visibility != (trip is null ? Visibility.Collapsed : Visibility.Visible))
+            {
+                bool wasVisible = electricalNotice.Visibility == Visibility.Visible;
+                bool newTrip = trip is not null && rearm.Visibility != Visibility.Visible;
+                displayedIssue = issue;
+                electricalNotice.Visibility = issue is null ? Visibility.Collapsed : Visibility.Visible;
+                electricalMessage.Text = issue is null ? "" : trip is null ? issue.Message :
+                    $"Virtueller Schutz ausgelöst. {issue.Message} Korrigiere die Verdrahtung oder die Signalquelle.";
+                rearm.Visibility = trip is null ? Visibility.Collapsed : Visibility.Visible;
+                if ((!wasVisible || newTrip) && issue is not null)
+                    (UIElementAutomationPeer.FromElement(electricalMessage) ??
+                        UIElementAutomationPeer.CreatePeerForElement(electricalMessage))
+                        ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+                RefreshPortHighlights(model.Cables);
+            }
+            rearm.IsEnabled = model.Usb;
+            bool good = model.Powered && model.Adapter && issue is null;
+            status.Text = trip is not null ? "Virtueller Schutz ausgelöst" : !model.Usb ? "USB getrennt" :
+                issue is not null ? "Grenzwert prüfen" : !model.Adapter ? "Adapter abgezogen" : "Steckwerkbank bereit";
             status.Foreground = Theme(good ? "Ready" : "Warning");
             statePill.Background = Theme(good ? "ReadySurface" : "WarningSurface");
-            lastRequest.Text = server.LastRequest ?? "Wartet auf eine Anfrage aus LabVIEW";
+            UpdateLabViewStatus();
         }
         finally { Monitor.Exit(model.Gate); }
+    }
+
+    private void UpdateLabViewStatus()
+    {
+        var activity = server.LastActivity;
+        lastRequest.Text = activity switch
+        {
+            null => "Wartet auf eine Anfrage aus LabVIEW",
+            { Operation: "OHM", Status: -3 } => "DMM · Messkreis offen oder außerhalb des Bereichs",
+            { Status: < 0 } => $"Auftrag fehlgeschlagen ({activity.Status}) · {activity.Channel}",
+            { Status: 1 } => $"Messbereich erreicht · {activity.Channel}",
+            { ResistanceOhms: double ohms } => $"DMM: {ohms:G} Ω · Prüfpfad VΩ+ → COM",
+            { Operation: "AO" } => $"Ausgabe bestätigt · {activity.Channel}",
+            { Operation: "AI" } => $"Messung abgeschlossen · {activity.Channel}",
+            _ => $"Auftrag abgeschlossen · {activity.Channel}"
+        };
+        bool ao0 = model.Powered && model.Analog[0] is not null;
+        bool ao1 = model.Powered && model.Analog[1] is not null;
+        outputState.Text = (ao0, ao1) switch
+        {
+            (true, true) => "AO0 aktiv · AO1 aktiv",
+            (true, false) => "AO0 aktiv",
+            (false, true) => "AO1 aktiv",
+            _ => "Analogausgänge aus"
+        };
+        outputState.Foreground = Theme(ao0 || ao1 ? "Ready" : "Quiet");
+        stopAnalog[0].IsEnabled = ao0;
+        stopAnalog[1].IsEnabled = ao1;
+
+        var reading = server.LastAnalogReading;
+        lastAnalogRead.Text = reading switch
+        {
+            null => "AI-Messung ausstehend. Starte den Messassistenten in LabVIEW.",
+            { SampleCount: > 0 } => $"Letzte AI-Messung · {reading.Channel}\n{reading.SampleCount} Werte, ca. {reading.Minimum:0.##} bis {reading.Maximum:0.##} V"
+                + (reading.Status == 1 ? " · begrenzt" : ""),
+            { Status: -3 } => $"Letzte AI-Messung · {reading.Channel}\nSignalweg oder Messbezug fehlt (−3).",
+            _ => $"Letzte AI-Messung · {reading.Channel}\nFehler {reading.Status}."
+        };
     }
 
     private void RedrawWires()
     {
         Cable[] cables;
         lock (model.Gate) cables = model.Cables.ToArray();
-        var connected = cables.SelectMany(cable => new[] { cable.A.Id, cable.B.Id }).ToHashSet();
-        foreach (var (key, pin) in sockets)
-            pin.Tag = key == selected || key == inspected ? "selected" : connected.Contains(key) ? "connected" : null;
+        RefreshPortHighlights(cables);
         wires.Children.Clear();
         for (int i = 0; i < cables.Length; i++)
         {
@@ -329,14 +390,43 @@ internal sealed partial class WorkbenchWindow
             var geometry = new PathGeometry([curve]);
             var color = ColorOf(CableColors[i % CableColors.Length]);
             bool faulted = cable.Fault != CableFault.Intact;
-            wires.Children.Add(new Path { Data = geometry, Stroke = CableShadow, StrokeThickness = active ? 9 : 7,
+            var target = new Path { Data = geometry, Stroke = Brushes.Transparent, StrokeThickness = 13,
+                Cursor = Cursors.Hand, ToolTip = $"Leitung auswählen · {cable}", Tag = i };
+            int index = i;
+            target.MouseLeftButtonDown += (_, e) =>
+            {
+                SelectCableOnBoard(index);
+                e.Handled = true;
+            };
+            wires.Children.Add(target);
+            wires.Children.Add(new Path { Data = geometry, Stroke = active ? Theme("StageFocus") : CableShadow,
+                StrokeThickness = active ? 10 : 7, IsHitTestVisible = false,
                 StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round });
             wires.Children.Add(new Path { Data = geometry, Stroke = faulted ? FaultLine : color,
-                StrokeThickness = active ? 5 : 3.5, StrokeDashArray = faulted ? [4, 2.5] : null,
+                StrokeThickness = active ? 5 : 3.5, StrokeDashArray = faulted ? [4, 2.5] : null, IsHitTestVisible = false,
                 StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round });
             foreach (Point point in new[] { a, b })
                 Place(wires, new Ellipse { Width = 9, Height = 9, Fill = faulted ? FaultLine : color,
-                    Stroke = CableShadow, StrokeThickness = 1.5 }, point.X - 4.5, point.Y - 4.5);
+                    Stroke = CableShadow, StrokeThickness = 1.5, IsHitTestVisible = false }, point.X - 4.5, point.Y - 4.5);
+        }
+    }
+
+    private void RefreshPortHighlights(IReadOnlyList<Cable> cables)
+    {
+        var connected = cables.SelectMany(cable => new[] { cable.A.Id, cable.B.Id }).ToHashSet();
+        int index = cableList.SelectedIndex;
+        Cable? active = index >= 0 && index < cables.Count ? cables[index] : null;
+        foreach (var (id, pin) in sockets)
+        {
+            Socket socket = Bench.Sockets[id];
+            string? signal = displayedIssue?.Signal;
+            bool affected = signal is not null && (signal == socket.Signal || signal == socket.Shield ||
+                signal == "DMM+" && socket.Signal == "DMM-" ||
+                signal == "AI0+" && socket.Signal == "EXT0" && model.Jumpers[3] == 1 ||
+                signal == "AI1+" && socket.Signal == "EXT1" && model.Jumpers[4] == 1);
+            pin.Tag = affected ? "electrical" :
+                id == selected || id == inspected || active?.A.Id == id || active?.B.Id == id ? "selected" :
+                connected.Contains(id) ? "connected" : null;
         }
     }
 
@@ -347,33 +437,33 @@ internal sealed partial class WorkbenchWindow
         if (socket.Id.StartsWith("DMM", StringComparison.Ordinal))
             return socket.Signal switch
             {
-                "DMM+" => "Buchse für die positive Messleitung bei der Widerstandsmessung.",
-                "DMM-" => "Gemeinsamer Bezug des Digitalmultimeters für die zweite Messleitung.",
+                "DMM+" => "Positive Messleitung. Bei der Widerstandsmessung speist das DMM hier seinen Prüfstrom ein.",
+                "DMM-" => "Gemeinsamer Bezug und Rückleitung des Prüfstroms bei der Widerstandsmessung.",
                 _ => "Buchse für die Strommessung. Für den Widerstand verwendest du VΩ+ und COM."
             };
         if (socket.Shield is not null)
             return socket.Signal switch
             {
-                "EXT0" => "BNC-Eingang für AI0. Der Innenleiter führt zu J4.1, der Schirm zu AI0−.",
-                "EXT1" => "BNC-Eingang für AI1. Der Innenleiter führt zu J5.1, der Schirm zu AI1−.",
-                _ => $"BNC-Analogausgang {socket.Signal}. Das Ausgangssignal liegt zwischen Innenleiter und analoger Masse am Schirm."
+                "EXT0" => "BNC-Eingang für AI0. Der Innenleiter führt zu J4.1, der Schirm zu AI0−. Arbeitsbereich je Klemme ±10,5 V gegen AGND.",
+                "EXT1" => "BNC-Eingang für AI1. Der Innenleiter führt zu J5.1, der Schirm zu AI1−. Arbeitsbereich je Klemme ±10,5 V gegen AGND.",
+                _ => $"BNC-Analogausgang {socket.Signal}. ±2 oder ±10 V gegen AGND am Schirm, maximal 2 mA je Kanal."
             };
         if (socket.Signal.StartsWith("DIO", StringComparison.Ordinal))
         {
             string detail = socket.Signal[^1] <= '3' ? $" Diese Leitung ist auch als PFI{socket.Signal[^1]} adressierbar." : "";
-            return $"Digitalleitung {socket.Signal}. LabVIEW kann sie lesen oder als Ausgang schalten.{detail}";
+            return $"Digitalleitung {socket.Signal}. Eingang: 0 bis 5 V gegen DGND. Ausgang: 3,3 V, maximal 4 mA je Pin.{detail}";
         }
-        if (socket.Signal.StartsWith("AO", StringComparison.Ordinal)) return "Analogausgang. LabVIEW gibt hier einen Spannungsverlauf aus.";
+        if (socket.Signal.StartsWith("AO", StringComparison.Ordinal)) return "Analogausgang. ±2 oder ±10 V gegen AGND, maximal 2 mA je Kanal.";
         if (socket.Signal.StartsWith("AI", StringComparison.Ordinal))
-            return socket.Signal.EndsWith('+') ? "Plusklemme eines Analogeingangs. Der Eingang misst zwischen Plus und Minus." :
-                "Minusklemme eines Analogeingangs. Sie dient der Messung als elektrischer Bezug.";
+            return socket.Signal.EndsWith('+') ? "Plusklemme eines Analogeingangs. Je Klemme sind ±10,5 V gegen AGND im Arbeitsbereich." :
+                "Minusklemme eines Analogeingangs. Je Klemme sind ±10,5 V gegen AGND im Arbeitsbereich.";
         return socket.Signal switch
         {
             "AGND" => "Bezugsmasse der analogen Schaltung.",
             "DGND" => "Bezugsmasse der digitalen Schaltung.",
             "EXT0" => "Externer Signalweg am Pin J4.1 für den Analogeingang AI0.",
             "EXT1" => "Externer Signalweg am Pin J5.1 für den Analogeingang AI1.",
-            _ => $"Versorgungsspannung {socket.Signal} V."
+            _ => $"Versorgungsspannung {socket.Signal} V. Maximal {(socket.Signal == "+5" ? 100 : 32)} mA an dieser Schiene."
         };
     }
 }
